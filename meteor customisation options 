@@ -1,0 +1,7 @@
+meteorSpawnHeight = 300        -- How high meteors spawn
+spawnInterval = 5              -- Seconds between meteors
+fallSpeed = 50                 -- Speed of descent
+impactDamage = 25              -- Damage per hit
+aoeDamageRadius = 100          -- Damage effect radius
+craterSize = 50                -- How big craters are
+debrisSpawnCount = 15          -- Amount of debris pieces
