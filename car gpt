@@ -1,0 +1,1187 @@
+import bpy
+import math
+from mathutils import Vector
+
+# ============================================================
+# PROJECT ALPHA — DETAILED ROBLOX-READY SPORTS CAR
+# Blender 4.1
+# ============================================================
+
+# ============================================================
+# CLEAN SCENE
+# ============================================================
+
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+for datablocks in (
+    bpy.data.meshes,
+    bpy.data.curves,
+    bpy.data.materials,
+    bpy.data.cameras,
+    bpy.data.lights,
+):
+    pass
+
+
+# ============================================================
+# COLLECTIONS
+# ============================================================
+
+def make_collection(name):
+    collection = bpy.data.collections.get(name)
+
+    if collection is None:
+        collection = bpy.data.collections.new(name)
+        bpy.context.scene.collection.children.link(collection)
+
+    return collection
+
+
+CAR = make_collection("CAR")
+BODY = make_collection("CAR_BODY")
+GLASS = make_collection("CAR_GLASS")
+WHEELS = make_collection("CAR_WHEELS")
+LIGHTS = make_collection("CAR_LIGHTS")
+INTERIOR = make_collection("CAR_INTERIOR")
+DETAILS = make_collection("CAR_DETAILS")
+
+
+def move_to_collection(obj, collection):
+    for c in list(obj.users_collection):
+        c.objects.unlink(obj)
+
+    collection.objects.link(obj)
+
+
+# ============================================================
+# MATERIALS
+# ============================================================
+
+def material(name, color, metallic=0.0, roughness=0.5):
+    mat = bpy.data.materials.get(name)
+
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+
+    mat.diffuse_color = (*color, 1)
+    mat.use_nodes = True
+
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = (*color, 1)
+        bsdf.inputs["Metallic"].default_value = metallic
+        bsdf.inputs["Roughness"].default_value = roughness
+
+    return mat
+
+
+BODY_MAT = material(
+    "Body_Paint",
+    (0.12, 0.025, 0.02),
+    metallic=0.65,
+    roughness=0.23
+)
+
+BODY_DARK = material(
+    "Body_Dark",
+    (0.025, 0.025, 0.03),
+    metallic=0.45,
+    roughness=0.28
+)
+
+RUBBER = material(
+    "Tire_Rubber",
+    (0.008, 0.008, 0.009),
+    metallic=0.0,
+    roughness=0.82
+)
+
+RIM = material(
+    "Rim_Metal",
+    (0.25, 0.27, 0.30),
+    metallic=0.9,
+    roughness=0.18
+)
+
+GLASS_MAT = material(
+    "Window_Glass",
+    (0.015, 0.035, 0.055),
+    metallic=0.1,
+    roughness=0.12
+)
+
+HEADLIGHT = material(
+    "Headlight",
+    (0.45, 0.75, 1.0),
+    metallic=0.1,
+    roughness=0.12
+)
+
+TAILLIGHT = material(
+    "TailLight",
+    (0.7, 0.01, 0.015),
+    metallic=0.1,
+    roughness=0.18
+)
+
+CHROME = material(
+    "Chrome",
+    (0.5, 0.5, 0.52),
+    metallic=1.0,
+    roughness=0.12
+)
+
+INTERIOR_MAT = material(
+    "Interior",
+    (0.025, 0.02, 0.018),
+    metallic=0.05,
+    roughness=0.55
+)
+
+SEAT_MAT = material(
+    "Seats",
+    (0.09, 0.025, 0.02),
+    metallic=0.05,
+    roughness=0.5
+)
+
+YELLOW = material(
+    "TurnSignal",
+    (1.0, 0.45, 0.02),
+    metallic=0.0,
+    roughness=0.2
+)
+
+
+# ============================================================
+# BASIC OBJECT HELPERS
+# ============================================================
+
+def cube(
+    name,
+    location,
+    scale,
+    mat,
+    bevel=0.0,
+    collection=CAR
+):
+    bpy.ops.mesh.primitive_cube_add(
+        location=location
+    )
+
+    obj = bpy.context.object
+    obj.name = name
+    obj.scale = scale
+
+    bpy.ops.object.transform_apply(
+        location=False,
+        rotation=False,
+        scale=True
+    )
+
+    if bevel > 0:
+        modifier = obj.modifiers.new(
+            "EdgeBevel",
+            "BEVEL"
+        )
+        modifier.width = bevel
+        modifier.segments = 2
+
+    obj.data.materials.append(mat)
+    move_to_collection(obj, collection)
+
+    return obj
+
+
+def uv_sphere(
+    name,
+    location,
+    scale,
+    mat,
+    collection=CAR,
+    segments=24,
+    rings=12
+):
+    bpy.ops.mesh.primitive_uv_sphere_add(
+        segments=segments,
+        ring_count=rings,
+        location=location
+    )
+
+    obj = bpy.context.object
+    obj.name = name
+    obj.scale = scale
+
+    bpy.ops.object.transform_apply(
+        location=False,
+        rotation=False,
+        scale=True
+    )
+
+    obj.data.materials.append(mat)
+    move_to_collection(obj, collection)
+
+    return obj
+
+
+def cylinder(
+    name,
+    location,
+    radius,
+    depth,
+    mat,
+    rotation=(0, 0, 0),
+    collection=CAR,
+    vertices=32,
+    bevel=0.0
+):
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=vertices,
+        radius=radius,
+        depth=depth,
+        location=location,
+        rotation=rotation
+    )
+
+    obj = bpy.context.object
+    obj.name = name
+
+    if bevel > 0:
+        modifier = obj.modifiers.new(
+            "EdgeBevel",
+            "BEVEL"
+        )
+        modifier.width = bevel
+        modifier.segments = 2
+
+    obj.data.materials.append(mat)
+    move_to_collection(obj, collection)
+
+    return obj
+
+
+def torus(
+    name,
+    location,
+    major_radius,
+    minor_radius,
+    mat,
+    rotation=(0, 0, 0),
+    collection=CAR
+):
+    bpy.ops.mesh.primitive_torus_add(
+        major_radius=major_radius,
+        minor_radius=minor_radius,
+        major_segments=32,
+        minor_segments=12,
+        location=location,
+        rotation=rotation
+    )
+
+    obj = bpy.context.object
+    obj.name = name
+    obj.data.materials.append(mat)
+
+    move_to_collection(obj, collection)
+
+    return obj
+
+
+# ============================================================
+# CAR DIMENSIONS
+#
+# X = width
+# Y = length
+# Z = height
+# ============================================================
+
+CAR_LENGTH = 8.8
+CAR_WIDTH = 3.8
+CAR_HEIGHT = 2.15
+
+
+# ============================================================
+# LOWER BODY
+# ============================================================
+
+cube(
+    "Body_Main",
+    (0, 0, 1.05),
+    (1.78, 3.65, 0.38),
+    BODY_MAT,
+    bevel=0.18,
+    collection=BODY
+)
+
+cube(
+    "Lower_Chassis",
+    (0, 0, 0.73),
+    (1.65, 3.55, 0.20),
+    BODY_DARK,
+    bevel=0.12,
+    collection=BODY
+)
+
+
+# ============================================================
+# FRONT NOSE
+# ============================================================
+
+cube(
+    "Front_Nose",
+    (0, -3.85, 1.25),
+    (1.7, 0.55, 0.34),
+    BODY_MAT,
+    bevel=0.2,
+    collection=BODY
+)
+
+cube(
+    "Front_Bumper",
+    (0, -4.25, 0.88),
+    (1.72, 0.25, 0.22),
+    BODY_DARK,
+    bevel=0.12,
+    collection=BODY
+)
+
+# Front splitter
+cube(
+    "Front_Splitter",
+    (0, -4.48, 0.70),
+    (1.78, 0.16, 0.07),
+    BODY_DARK,
+    bevel=0.04,
+    collection=DETAILS
+)
+
+
+# ============================================================
+# HOOD
+# ============================================================
+
+cube(
+    "Hood",
+    (0, -2.55, 1.55),
+    (1.52, 1.05, 0.12),
+    BODY_MAT,
+    bevel=0.12,
+    collection=BODY
+)
+
+# Hood center ridge
+cube(
+    "Hood_Ridge",
+    (0, -2.55, 1.68),
+    (0.08, 0.85, 0.035),
+    BODY_DARK,
+    bevel=0.025,
+    collection=DETAILS
+)
+
+# Hood vents
+for x in (-0.85, 0.85):
+    cube(
+        "Hood_Vent",
+        (x, -2.65, 1.69),
+        (0.22, 0.48, 0.035),
+        BODY_DARK,
+        bevel=0.05,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# CABIN / ROOF
+# ============================================================
+
+# Main roof
+cube(
+    "Roof",
+    (0, 0.35, 2.38),
+    (1.35, 1.65, 0.13),
+    BODY_MAT,
+    bevel=0.18,
+    collection=BODY
+)
+
+# Roof center glass
+cube(
+    "Roof_Glass",
+    (0, 0.25, 2.51),
+    (1.05, 1.35, 0.035),
+    GLASS_MAT,
+    bevel=0.08,
+    collection=GLASS
+)
+
+
+# ============================================================
+# WINDSHIELD
+# ============================================================
+
+windshield = cube(
+    "Front_Windshield",
+    (0, -1.08, 2.02),
+    (1.28, 0.08, 0.65),
+    GLASS_MAT,
+    bevel=0.10,
+    collection=GLASS
+)
+
+windshield.rotation_euler[0] = math.radians(-14)
+
+
+# ============================================================
+# REAR GLASS
+# ============================================================
+
+rear_glass = cube(
+    "Rear_Window",
+    (0, 1.72, 2.03),
+    (1.20, 0.08, 0.55),
+    GLASS_MAT,
+    bevel=0.08,
+    collection=GLASS
+)
+
+rear_glass.rotation_euler[0] = math.radians(12)
+
+
+# ============================================================
+# SIDE WINDOWS
+# ============================================================
+
+for side in (-1, 1):
+
+    side_name = "L" if side < 0 else "R"
+
+    # Front side window
+    window = cube(
+        f"{side_name}_Front_Window",
+        (side * 1.38, -0.45, 2.08),
+        (0.045, 0.65, 0.48),
+        GLASS_MAT,
+        bevel=0.05,
+        collection=GLASS
+    )
+
+    # Rear side window
+    window = cube(
+        f"{side_name}_Rear_Window",
+        (side * 1.38, 0.78, 2.08),
+        (0.045, 0.65, 0.48),
+        GLASS_MAT,
+        bevel=0.05,
+        collection=GLASS
+    )
+
+
+# ============================================================
+# A / B / C PILLARS
+# ============================================================
+
+for side in (-1, 1):
+
+    for y in (-1.0, 0.25, 1.45):
+
+        pillar = cube(
+            "Window_Pillar",
+            (side * 1.42, y, 2.08),
+            (0.07, 0.07, 0.62),
+            BODY_DARK,
+            bevel=0.025,
+            collection=DETAILS
+        )
+
+
+# ============================================================
+# SIDE SKIRTS
+# ============================================================
+
+for side in (-1, 1):
+
+    cube(
+        "Side_Skirt",
+        (side * 1.78, 0, 0.80),
+        (0.12, 2.8, 0.20),
+        BODY_DARK,
+        bevel=0.08,
+        collection=BODY
+    )
+
+
+# ============================================================
+# WHEEL ARCH ACCENTS
+# ============================================================
+
+wheel_positions = [
+    (-1.78, -2.45),
+    (1.78, -2.45),
+    (-1.78, 2.45),
+    (1.78, 2.45),
+]
+
+for x, y in wheel_positions:
+
+    torus(
+        "Wheel_Arch_Accent",
+        (x, y, 0.94),
+        0.66,
+        0.055,
+        BODY_DARK,
+        rotation=(math.radians(90), 0, 0),
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# WHEELS
+# ============================================================
+
+def create_wheel(side, y, index):
+
+    x = side * 1.78
+
+    # Tire
+    tire = torus(
+        f"Wheel_{index}_Tire",
+        (x, y, 0.83),
+        0.62,
+        0.24,
+        RUBBER,
+        rotation=(math.radians(90), 0, 0),
+        collection=WHEELS
+    )
+
+    # Rim
+    rim = cylinder(
+        f"Wheel_{index}_Rim",
+        (x, y, 0.83),
+        0.45,
+        0.18,
+        RIM,
+        rotation=(math.radians(90), 0, 0),
+        collection=WHEELS,
+        vertices=32,
+        bevel=0.035
+    )
+
+    # Hub
+    cylinder(
+        f"Wheel_{index}_Hub",
+        (x + side * 0.11, y, 0.83),
+        0.12,
+        0.22,
+        CHROME,
+        rotation=(math.radians(90), 0, 0),
+        collection=WHEELS,
+        vertices=20
+    )
+
+    # Spokes
+    for spoke in range(5):
+
+        angle = math.radians(spoke * 72)
+
+        spoke_x = x + side * 0.12
+        spoke_y = y + math.cos(angle) * 0.27
+        spoke_z = 0.83 + math.sin(angle) * 0.27
+
+        spoke_obj = cube(
+            f"Wheel_{index}_Spoke",
+            (spoke_x, spoke_y, spoke_z),
+            (0.06, 0.20, 0.035),
+            RIM,
+            bevel=0.025,
+            collection=WHEELS
+        )
+
+        spoke_obj.rotation_euler[0] = math.radians(90)
+        spoke_obj.rotation_euler[1] = angle
+
+    return tire
+
+
+for i, (side, y) in enumerate(
+    [
+        (-1, -2.45),
+        (1, -2.45),
+        (-1, 2.45),
+        (1, 2.45)
+    ],
+    start=1
+):
+    create_wheel(side, y, i)
+
+
+# ============================================================
+# SIDE MIRRORS
+# ============================================================
+
+for side in (-1, 1):
+
+    mirror = uv_sphere(
+        "Side_Mirror",
+        (side * 1.62, -0.95, 2.18),
+        (0.25, 0.35, 0.16),
+        BODY_MAT,
+        collection=DETAILS
+    )
+
+    stalk = cube(
+        "Mirror_Stalk",
+        (side * 1.50, -0.90, 2.05),
+        (0.07, 0.20, 0.06),
+        BODY_DARK,
+        bevel=0.04,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# HEADLIGHTS
+# ============================================================
+
+for side in (-1, 1):
+
+    x = side * 1.03
+
+    # Main light
+    cube(
+        "Headlight",
+        (x, -4.15, 1.38),
+        (0.58, 0.08, 0.20),
+        HEADLIGHT,
+        bevel=0.10,
+        collection=LIGHTS
+    )
+
+    # LED strip
+    cube(
+        "Headlight_LED",
+        (x, -4.24, 1.25),
+        (0.50, 0.035, 0.035),
+        CHROME,
+        bevel=0.02,
+        collection=LIGHTS
+    )
+
+
+# ============================================================
+# FRONT GRILLE
+# ============================================================
+
+cube(
+    "Front_Grille",
+    (0, -4.31, 1.02),
+    (0.72, 0.05, 0.20),
+    BODY_DARK,
+    bevel=0.05,
+    collection=DETAILS
+)
+
+# Grille bars
+for x in (-0.55, -0.28, 0, 0.28, 0.55):
+
+    cube(
+        "Grille_Bar",
+        (x, -4.38, 1.02),
+        (0.025, 0.025, 0.16),
+        CHROME,
+        bevel=0.01,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# REAR BODY
+# ============================================================
+
+cube(
+    "Rear_Bumper",
+    (0, 4.05, 0.96),
+    (1.72, 0.35, 0.30),
+    BODY_DARK,
+    bevel=0.15,
+    collection=BODY
+)
+
+cube(
+    "Rear_Deck",
+    (0, 3.0, 1.50),
+    (1.55, 0.75, 0.14),
+    BODY_MAT,
+    bevel=0.10,
+    collection=BODY
+)
+
+
+# ============================================================
+# TAILLIGHTS
+# ============================================================
+
+for side in (-1, 1):
+
+    cube(
+        "TailLight",
+        (side * 1.05, 4.22, 1.38),
+        (0.62, 0.07, 0.18),
+        TAILLIGHT,
+        bevel=0.08,
+        collection=LIGHTS
+    )
+
+    # Inner LED strip
+    cube(
+        "TailLight_LED",
+        (side * 1.05, 4.30, 1.39),
+        (0.50, 0.025, 0.035),
+        CHROME,
+        bevel=0.015,
+        collection=LIGHTS
+    )
+
+
+# ============================================================
+# EXHAUSTS
+# ============================================================
+
+for x in (-0.85, 0.85):
+
+    cylinder(
+        "Exhaust",
+        (x, 4.38, 0.75),
+        0.15,
+        0.18,
+        CHROME,
+        rotation=(math.radians(90), 0, 0),
+        collection=DETAILS,
+        vertices=24,
+        bevel=0.025
+    )
+
+
+# ============================================================
+# REAR DIFFUSER
+# ============================================================
+
+cube(
+    "Rear_Diffuser",
+    (0, 4.28, 0.65),
+    (1.55, 0.20, 0.14),
+    BODY_DARK,
+    bevel=0.06,
+    collection=DETAILS
+)
+
+
+# ============================================================
+# SPOILER
+# ============================================================
+
+cube(
+    "Spoiler_Blade",
+    (0, 3.48, 2.02),
+    (1.35, 0.18, 0.10),
+    BODY_DARK,
+    bevel=0.07,
+    collection=DETAILS
+)
+
+for side in (-1, 1):
+
+    cube(
+        "Spoiler_Support",
+        (side * 0.82, 3.48, 1.78),
+        (0.08, 0.10, 0.32),
+        BODY_DARK,
+        bevel=0.04,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# DOOR SEAMS
+# ============================================================
+
+for side in (-1, 1):
+
+    # Front door seam
+    cube(
+        "Door_Seam",
+        (side * 1.81, -0.35, 1.35),
+        (0.025, 0.70, 0.025),
+        BODY_DARK,
+        collection=DETAILS
+    )
+
+    # Rear door seam
+    cube(
+        "Door_Seam",
+        (side * 1.81, 1.05, 1.35),
+        (0.025, 0.70, 0.025),
+        BODY_DARK,
+        collection=DETAILS
+    )
+
+    # Door handles
+    cube(
+        "Door_Handle",
+        (side * 1.84, 0.05, 1.72),
+        (0.035, 0.22, 0.045),
+        CHROME,
+        bevel=0.025,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# FUEL CAP
+# ============================================================
+
+cylinder(
+    "Fuel_Cap",
+    (-1.82, 2.0, 1.55),
+    0.20,
+    0.04,
+    BODY_DARK,
+    rotation=(0, math.radians(90), 0),
+    collection=DETAILS,
+    vertices=32
+)
+
+
+# ============================================================
+# INTERIOR FLOOR
+# ============================================================
+
+cube(
+    "Interior_Floor",
+    (0, 0.2, 1.35),
+    (1.25, 1.55, 0.08),
+    INTERIOR_MAT,
+    bevel=0.05,
+    collection=INTERIOR
+)
+
+
+# ============================================================
+# SEATS
+# ============================================================
+
+for side in (-0.65, 0.65):
+
+    cube(
+        "Seat_Base",
+        (side, 0.45, 1.60),
+        (0.48, 0.52, 0.13),
+        SEAT_MAT,
+        bevel=0.12,
+        collection=INTERIOR
+    )
+
+    cube(
+        "Seat_Back",
+        (side, 0.82, 1.92),
+        (0.46, 0.15, 0.50),
+        SEAT_MAT,
+        bevel=0.13,
+        collection=INTERIOR
+    )
+
+    cube(
+        "Headrest",
+        (side, 0.84, 2.30),
+        (0.30, 0.12, 0.16),
+        SEAT_MAT,
+        bevel=0.08,
+        collection=INTERIOR
+    )
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+cube(
+    "Dashboard",
+    (0, -0.90, 1.83),
+    (1.18, 0.25, 0.18),
+    INTERIOR_MAT,
+    bevel=0.08,
+    collection=INTERIOR
+)
+
+# Dashboard screen
+cube(
+    "Dashboard_Screen",
+    (0, -1.15, 1.92),
+    (0.42, 0.025, 0.13),
+    GLASS_MAT,
+    bevel=0.025,
+    collection=INTERIOR
+)
+
+
+# ============================================================
+# STEERING WHEEL
+# ============================================================
+
+torus(
+    "Steering_Wheel",
+    (-0.58, -1.05, 1.93),
+    0.25,
+    0.045,
+    RUBBER,
+    rotation=(math.radians(90), 0, 0),
+    collection=INTERIOR
+)
+
+cube(
+    "Steering_Center",
+    (-0.58, -1.05, 1.93),
+    (0.10, 0.05, 0.10),
+    BODY_MAT,
+    bevel=0.03,
+    collection=INTERIOR
+)
+
+
+# ============================================================
+# CENTER CONSOLE
+# ============================================================
+
+cube(
+    "Center_Console",
+    (0, -0.05, 1.58),
+    (0.28, 0.70, 0.15),
+    INTERIOR_MAT,
+    bevel=0.08,
+    collection=INTERIOR
+)
+
+# Gear selector
+cylinder(
+    "Gear_Shifter",
+    (0, -0.25, 1.82),
+    0.08,
+    0.18,
+    CHROME,
+    collection=INTERIOR,
+    vertices=20,
+    bevel=0.02
+)
+
+
+# ============================================================
+# PEDALS
+# ============================================================
+
+for x in (-0.25, 0, 0.25):
+
+    cube(
+        "Pedal",
+        (x, -1.28, 1.52),
+        (0.06, 0.03, 0.12),
+        CHROME,
+        bevel=0.02,
+        collection=INTERIOR
+    )
+
+
+# ============================================================
+# BRAKE LIGHT CENTER
+# ============================================================
+
+cube(
+    "Center_Brake_Light",
+    (0, 4.30, 1.48),
+    (0.28, 0.035, 0.06),
+    TAILLIGHT,
+    bevel=0.025,
+    collection=LIGHTS
+)
+
+
+# ============================================================
+# SIDE ACCENT STRIP
+# ============================================================
+
+for side in (-1, 1):
+
+    cube(
+        "Side_Accent",
+        (side * 1.84, 0.75, 1.18),
+        (0.025, 1.55, 0.035),
+        CHROME,
+        bevel=0.015,
+        collection=DETAILS
+    )
+
+
+# ============================================================
+# FRONT BADGE
+# ============================================================
+
+cylinder(
+    "Front_Badge",
+    (0, -4.40, 1.45),
+    0.15,
+    0.04,
+    CHROME,
+    rotation=(math.radians(90), 0, 0),
+    collection=DETAILS,
+    vertices=32
+)
+
+
+# ============================================================
+# ROBLOX-FRIENDLY OPTIMIZATION
+# ============================================================
+
+# Shade smooth where appropriate
+for obj in bpy.context.scene.objects:
+
+    if obj.type == 'MESH':
+
+        for polygon in obj.data.polygons:
+            polygon.use_smooth = True
+
+
+# ============================================================
+# WORLD / GROUND
+# ============================================================
+
+cube(
+    "Display_Ground",
+    (0, 0, -0.12),
+    (6, 7, 0.10),
+    BODY_DARK,
+    bevel=0.08,
+    collection=CAR
+)
+
+
+# ============================================================
+# CAMERA
+# ============================================================
+
+bpy.ops.object.camera_add(
+    location=(10, -12, 7)
+)
+
+camera = bpy.context.object
+camera.name = "Car_Showcase_Camera"
+
+direction = Vector((0, 0, 1.0)) - camera.location
+camera.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+
+camera.data.lens = 52
+
+bpy.context.scene.camera = camera
+
+
+# ============================================================
+# LIGHTING
+# ============================================================
+
+bpy.ops.object.light_add(
+    type='AREA',
+    location=(4, -5, 8)
+)
+
+key = bpy.context.object
+key.name = "Key_Light"
+key.data.energy = 1200
+key.data.shape = 'DISK'
+key.data.size = 5
+
+direction = Vector((0, 0, 1)) - key.location
+key.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+
+
+bpy.ops.object.light_add(
+    type='AREA',
+    location=(-5, 2, 5)
+)
+
+fill = bpy.context.object
+fill.name = "Fill_Light"
+fill.data.energy = 800
+fill.data.size = 4
+
+direction = Vector((0, 0, 1.2)) - fill.location
+fill.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+
+
+bpy.ops.object.light_add(
+    type='AREA',
+    location=(0, 5, 7)
+)
+
+rim_light = bpy.context.object
+rim_light.name = "Rim_Light"
+rim_light.data.energy = 1000
+rim_light.data.size = 3
+
+direction = Vector((0, 0, 1)) - rim_light.location
+rim_light.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+
+
+# ============================================================
+# SCENE SETTINGS
+# ============================================================
+
+scene = bpy.context.scene
+
+scene.render.engine = 'BLENDER_EEVEE_NEXT'
+
+scene.render.resolution_x = 1024
+scene.render.resolution_y = 1024
+scene.render.resolution_percentage = 100
+
+scene.render.image_settings.file_format = 'PNG'
+
+scene.world.color = (0.015, 0.015, 0.02)
+
+
+# ============================================================
+# SELECT CAR COLLECTION OBJECTS
+# ============================================================
+
+bpy.ops.object.select_all(action='DESELECT')
+
+for obj in CAR.objects:
+    obj.select_set(True)
+
+bpy.context.view_layer.objects.active = bpy.data.objects.get("Body_Main")
+
+
+# ============================================================
+# SAVE
+# ============================================================
+
+output_path = "//Project_Alpha_Detailed_Car.blend"
+
+bpy.ops.wm.save_as_mainfile(
+    filepath=bpy.path.abspath(output_path)
+)
+
+print("==============================================")
+print("PROJECT ALPHA — DETAILED CAR GENERATED")
+print("==============================================")
+print("Blender 4.1 compatible")
+print("Roblox-friendly separated components")
+print("Collections:")
+print("  CAR_BODY")
+print("  CAR_GLASS")
+print("  CAR_WHEELS")
+print("  CAR_LIGHTS")
+print("  CAR_INTERIOR")
+print("  CAR_DETAILS")
+print("Saved as:")
+print(output_path)
+print("==============================================")
